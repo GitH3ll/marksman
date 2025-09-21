@@ -20,13 +20,13 @@ type YDBConfig struct {
 }
 
 // LoadConfig loads configuration from environment variables
-func LoadConfig() (*Config, error) {
+func LoadConfig(appName string) (*Config, error) {
 	var cfg Config
-	err := envconfig.Process("", &cfg)
+	err := envconfig.Process(appName, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process envconfig: %w", err)
 	}
-	
+
 	log.Println("Configuration loaded successfully")
 	return &cfg, nil
 }
