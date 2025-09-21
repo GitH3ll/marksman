@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3"
+	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	yc "github.com/ydb-platform/ydb-go-yc" // For automatic auth in Yandex Cloud
 )
 
@@ -74,16 +75,31 @@ func (c *YDBConnection) HealthCheck(ctx context.Context) error {
 	
 	// Check if the connection is alive by getting the current time from the database
 	var currentTime time.Time
-	err := c.driver.Table().Do(ctx, func(ctx context.Context, s ydb.Table.Session) error {
-		_, res, err := s.Execute(ctx, ydb.Table.DefaultTxControl(), "SELECT CurrentUtcTimestamp()", nil)
+	// Use the correct way to execute a query with the current SDK version
+	err := c.driver.Table().Do(ctx, func(ctx context.Context, session table.Session) error {
+		// Prepare the transaction control
+		txc := table.TxControl(table.BeginTx(table.WithOnlineReadOnly()), table.CommitTx())
+		
+		// Execute the query
+		res, err := session.Execute(ctx, txc, "SELECT CurrentUtcTimestamp() AS timestamp", nil)
 		if err != nil {
 			return err
 		}
 		defer res.Close()
+		
+		// Process the result
 		if !res.NextResultSet(ctx) || !res.NextRow() {
 			return fmt.Errorf("no rows returned")
 		}
-		return res.Scan(&currentTime)
+		
+		// Scan the result
+		err = res.ScanNamed(
+			table.OptionalWithDefault("timestamp", &currentTime),
+		)
+		if err != nil {
+			return err
+		}
+		return nil
 	})
 	
 	if err != nil {
