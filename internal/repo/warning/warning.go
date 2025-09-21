@@ -31,8 +31,8 @@ type Warning struct {
 // CreateWarning inserts a new warning into the warnings table
 func CreateWarning(ctx context.Context, driver *ydb.Driver, userID, chatID, reason string) error {
 	// Generate a UUID for the warning
-	warningID := uuid.New().String()
-	
+	warningID := uuid.New()
+
 	// Prepare the query
 	query := `
 		DECLARE $id AS Utf8;
@@ -43,12 +43,12 @@ func CreateWarning(ctx context.Context, driver *ydb.Driver, userID, chatID, reas
 		INSERT INTO warnings (id, user_id, chat_id, reason)
 		VALUES ($id, $user_id, $chat_id, $reason);
 	`
-	
+
 	// Execute the query
 	return driver.Table().Do(ctx, func(ctx context.Context, session table.Session) error {
 		_, _, err := session.Execute(ctx, table.DefaultTxControl(), query,
 			table.NewQueryParameters(
-				table.ValueParam("$id", types.UTF8Value(warningID)),
+				table.ValueParam("$id", types.UuidValue(warningID)),
 				table.ValueParam("$user_id", types.UTF8Value(userID)),
 				table.ValueParam("$chat_id", types.UTF8Value(chatID)),
 				table.ValueParam("$reason", types.UTF8Value(reason)),
