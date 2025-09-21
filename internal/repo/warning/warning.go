@@ -3,12 +3,12 @@ package warning
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/GitH3ll/Marksman/internal/config"
 	"github.com/google/uuid"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
+	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	yc "github.com/ydb-platform/ydb-go-yc"
 )
 
@@ -22,11 +22,10 @@ func Connect(ctx context.Context, config config.YDBConfig) (*ydb.Driver, error) 
 
 // Warning represents a warning entry in the database
 type Warning struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	ChatID    string    `json:"chat_id"`
-	Reason    string    `json:"reason"`
-	CreatedAt time.Time `json:"created_at"`
+	ID     string `json:"id"`
+	UserID string `json:"user_id"`
+	ChatID string `json:"chat_id"`
+	Reason string `json:"reason"`
 }
 
 // CreateWarning inserts a new warning into the warnings table
@@ -40,21 +39,19 @@ func CreateWarning(ctx context.Context, driver *ydb.Driver, userID, chatID, reas
 		DECLARE $user_id AS Utf8;
 		DECLARE $chat_id AS Utf8;
 		DECLARE $reason AS Utf8;
-		DECLARE $created_at AS Timestamp;
 		
-		INSERT INTO warnings (id, user_id, chat_id, reason, created_at)
-		VALUES ($id, $user_id, $chat_id, $reason, $created_at);
+		INSERT INTO warnings (id, user_id, chat_id, reason)
+		VALUES ($id, $user_id, $chat_id, $reason);
 	`
 	
 	// Execute the query
 	return driver.Table().Do(ctx, func(ctx context.Context, session table.Session) error {
 		_, _, err := session.Execute(ctx, table.DefaultTxControl(), query,
 			table.NewQueryParameters(
-				table.ValueParam("$id", ydb.UTF8Value(warningID)),
-				table.ValueParam("$user_id", ydb.UTF8Value(userID)),
-				table.ValueParam("$chat_id", ydb.UTF8Value(chatID)),
-				table.ValueParam("$reason", ydb.UTF8Value(reason)),
-				table.ValueParam("$created_at", ydb.TimestampValueFromTime(time.Now())),
+				table.ValueParam("$id", types.UTF8Value(warningID)),
+				table.ValueParam("$user_id", types.UTF8Value(userID)),
+				table.ValueParam("$chat_id", types.UTF8Value(chatID)),
+				table.ValueParam("$reason", types.UTF8Value(reason)),
 			),
 		)
 		if err != nil {
