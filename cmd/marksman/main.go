@@ -186,64 +186,6 @@ func handleCrimesCommand(message *tgbotapi.Message) error {
 	return err
 }
 
-var (
-	initialized = false
-)
-
-func initBot() error {
-	if initialized {
-		return nil
-	}
-	
-	// Load configuration
-	cfg, err := config.LoadConfig("marksman")
-	if err != nil {
-		return fmt.Errorf("failed to load config: %v", err)
-	}
-
-	// Initialize Telegram bot
-	bot, err = tgbotapi.NewBotAPI(cfg.TelegramToken)
-	if err != nil {
-		return fmt.Errorf("failed to create bot: %v", err)
-	}
-
-	// Initialize YDB driver
-	ctx := context.Background()
-	driver, err = warning.Connect(ctx, cfg.YDBConfig)
-	if err != nil {
-		return fmt.Errorf("failed to connect to YDB: %v", err)
-	}
-	
-	initialized = true
-	return nil
-}
-
-// Handler is the entry point for Yandex Cloud Function
-func Handler(ctx context.Context, event []byte) (*tgbotapi.Message, error) {
-	// Initialize on first invocation
-	if err := initBot(); err != nil {
-		return nil, fmt.Errorf("init failed: %v", err)
-	}
-	defer driver.Close(ctx)
-
-	// Parse the update from Telegram
-	var update tgbotapi.Update
-	if err := json.Unmarshal(event, &update); err != nil {
-		return nil, fmt.Errorf("error decoding update: %v", err)
-	}
-
-	// Handle the update
-	if err := handleUpdate(update); err != nil {
-		return nil, fmt.Errorf("error handling update: %v", err)
-	}
-
-	// Return the message that was processed (or nil)
-	if update.Message != nil {
-		return update.Message, nil
-	}
-	return nil, nil
-}
-
 func main() {
 	// This is just for local testing, Yandex Cloud Function will call Handler directly
 	// For local testing, we can run a simple HTTP server
