@@ -1,0 +1,175 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/GitH3ll/Marksman/internal/config"
+	"github.com/GitH3ll/Marksman/internal/repo/warning"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
+)
+
+var (
+	bot    *tgbotapi.BotAPI
+	driver *ydb.Driver
+)
+
+// YCFHandler is the entry point for Yandex Cloud Function
+func YCFHandler(w http.ResponseWriter, r *http.Request) {
+	// Parse the update from Telegram
+	var update tgbotapi.Update
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		log.Printf("Error decoding update: %v", err)
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	// Handle the update
+	if err := handleUpdate(update); err != nil {
+		log.Printf("Error handling update: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleUpdate(update tgbotapi.Update) error {
+	// We're only interested in messages for now
+	if update.Message == nil {
+		return nil
+	}
+
+	// Check if the message is a command
+	if !update.Message.IsCommand() {
+		return nil
+	}
+
+	// Handle different commands
+	switch update.Message.Command() {
+	case "warn":
+		return handleWarnCommand(update.Message)
+	case "bang":
+		return handleBangCommand(update.Message)
+	case "pardon":
+		return handlePardonCommand(update.Message)
+	case "crimes":
+		return handleCrimesCommand(update.Message)
+	default:
+		// Ignore other commands
+		return nil
+	}
+}
+
+func handleWarnCommand(message *tgbotapi.Message) error {
+	// Extract the reason from the message text
+	// Command format: /warn @username reason text
+	parts := strings.SplitN(message.Text, " ", 3)
+	if len(parts) < 3 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /warn @username reason")
+		_, err := bot.Send(msg)
+		return err
+	}
+
+	// The target username is the second part (remove @ if present)
+	targetUsername := strings.TrimPrefix(parts[1], "@")
+	reason := parts[2]
+
+	// In a real implementation, you'd need to resolve the username to a user ID
+	// For now, we'll just send a response
+	response := fmt.Sprintf("Warning @%s: %s", targetUsername, reason)
+	msg := tgbotapi.NewMessage(message.Chat.ID, response)
+	_, err := bot.Send(msg)
+	return err
+}
+
+func handleBangCommand(message *tgbotapi.Message) error {
+	// Similar to warn but with different action
+	parts := strings.SplitN(message.Text, " ", 3)
+	if len(parts) < 3 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /bang @username reason")
+		_, err := bot.Send(msg)
+		return err
+	}
+
+	targetUsername := strings.TrimPrefix(parts[1], "@")
+	reason := parts[2]
+
+	response := fmt.Sprintf("Banged @%s: %s", targetUsername, reason)
+	msg := tgbotapi.NewMessage(message.Chat.ID, response)
+	_, err := bot.Send(msg)
+	return err
+}
+
+func handlePardonCommand(message *tgbotapi.Message) error {
+	// Remove warnings for a user
+	parts := strings.SplitN(message.Text, " ", 2)
+	if len(parts) < 2 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /pardon @username")
+		_, err := bot.Send(msg)
+		return err
+	}
+
+	targetUsername := strings.TrimPrefix(parts[1], "@")
+
+	response := fmt.Sprintf("Pardoned @%s", targetUsername)
+	msg := tgbotapi.NewMessage(message.Chat.ID, response)
+	_, err := bot.Send(msg)
+	return err
+}
+
+func handleCrimesCommand(message *tgbotapi.Message) error {
+	// List warnings for a user
+	parts := strings.SplitN(message.Text, " ", 2)
+	if len(parts) < 2 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /crimes @username")
+		_, err := bot.Send(msg)
+		return err
+	}
+
+	targetUsername := strings.TrimPrefix(parts[1], "@")
+
+	response := fmt.Sprintf("Crimes for @%s: ...", targetUsername)
+	msg := tgbotapi.NewMessage(message.Chat.ID, response)
+	_, err := bot.Send(msg)
+	return err
+}
+
+func main() {
+	// Load configuration
+	cfg, err := config.LoadConfig("marksman")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize Telegram bot
+	bot, err = tgbotapi.NewBotAPI(cfg.TelegramToken)
+	if err != nil {
+		log.Fatalf("Failed to create bot: %v", err)
+	}
+
+	// Initialize YDB driver
+	ctx := context.Background()
+	driver, err = warning.Connect(ctx, cfg.YDBConfig)
+	if err != nil {
+		log.Fatalf("Failed to connect to YDB: %v", err)
+	}
+	defer driver.Close(ctx)
+
+	// Start the HTTP server for Yandex Cloud Function
+	http.HandleFunc("/", YCFHandler)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Starting server on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
