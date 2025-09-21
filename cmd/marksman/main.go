@@ -186,35 +186,114 @@ func handleCrimesCommand(message *tgbotapi.Message) error {
 	return err
 }
 
-func main() {
+var (
+	initialized = false
+)
+
+func initBot() error {
+	if initialized {
+		return nil
+	}
+	
 	// Load configuration
 	cfg, err := config.LoadConfig("marksman")
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		return fmt.Errorf("failed to load config: %v", err)
 	}
 
 	// Initialize Telegram bot
 	bot, err = tgbotapi.NewBotAPI(cfg.TelegramToken)
 	if err != nil {
-		log.Fatalf("Failed to create bot: %v", err)
+		return fmt.Errorf("failed to create bot: %v", err)
 	}
 
 	// Initialize YDB driver
 	ctx := context.Background()
 	driver, err = warning.Connect(ctx, cfg.YDBConfig)
 	if err != nil {
-		log.Fatalf("Failed to connect to YDB: %v", err)
+		return fmt.Errorf("failed to connect to YDB: %v", err)
+	}
+	
+	initialized = true
+	return nil
+}
+
+// Handler is the entry point for Yandex Cloud Function
+func Handler(ctx context.Context, event []byte) (*tgbotapi.Message, error) {
+	// Initialize on first invocation
+	if err := initBot(); err != nil {
+		return nil, fmt.Errorf("init failed: %v", err)
 	}
 	defer driver.Close(ctx)
 
-	// Start the HTTP server for Yandex Cloud Function
-	http.HandleFunc("/", Handler)
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	// Parse the update from Telegram
+	var update tgbotapi.Update
+	if err := json.Unmarshal(event, &update); err != nil {
+		return nil, fmt.Errorf("error decoding update: %v", err)
 	}
 
-	log.Printf("Starting server on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	// Handle the update
+	if err := handleUpdate(update); err != nil {
+		return nil, fmt.Errorf("error handling update: %v", err)
+	}
+
+	// Return the message that was processed (or nil)
+	if update.Message != nil {
+		return update.Message, nil
+	}
+	return nil, nil
+}
+
+func main() {
+	// This is just for local testing, Yandex Cloud Function will call Handler directly
+	// For local testing, we can run a simple HTTP server
+	if os.Getenv("YC_HANDLER") != "true" {
+		// Load configuration
+		cfg, err := config.LoadConfig("marksman")
+		if err != nil {
+			log.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Initialize Telegram bot
+		bot, err = tgbotapi.NewBotAPI(cfg.TelegramToken)
+		if err != nil {
+			log.Fatalf("Failed to create bot: %v", err)
+		}
+
+		// Initialize YDB driver
+		ctx := context.Background()
+		driver, err = warning.Connect(ctx, cfg.YDBConfig)
+		if err != nil {
+			log.Fatalf("Failed to connect to YDB: %v", err)
+		}
+		defer driver.Close(ctx)
+
+		// Start the HTTP server for local testing
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			// Parse the update from Telegram
+			var update tgbotapi.Update
+			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+				log.Printf("Error decoding update: %v", err)
+				http.Error(w, "Bad Request", http.StatusBadRequest)
+				return
+			}
+
+			// Handle the update
+			if err := handleUpdate(update); err != nil {
+				log.Printf("Error handling update: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+		})
+
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+
+		log.Printf("Starting local test server on port %s", port)
+		log.Fatal(http.ListenAndServe(":"+port, nil))
+	}
 }
