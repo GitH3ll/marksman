@@ -114,3 +114,29 @@ func GetWarningsByUserAndChat(ctx context.Context, driver *ydb.Driver, userID, c
 
 	return warnings, nil
 }
+
+// DeleteWarningsByUserAndChat deletes all warnings for a specific user in a specific chat
+func DeleteWarningsByUserAndChat(ctx context.Context, driver *ydb.Driver, userID, chatID string) error {
+	// Prepare the query
+	query := `
+		DECLARE $user_id AS Utf8;
+		DECLARE $chat_id AS Utf8;
+		
+		DELETE FROM warnings 
+		WHERE user_id = $user_id AND chat_id = $chat_id;
+	`
+
+	// Execute the query
+	return driver.Table().Do(ctx, func(ctx context.Context, session table.Session) error {
+		_, _, err := session.Execute(ctx, table.DefaultTxControl(), query,
+			table.NewQueryParameters(
+				table.ValueParam("$user_id", types.UTF8Value(userID)),
+				table.ValueParam("$chat_id", types.UTF8Value(chatID)),
+			),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to execute query: %w", err)
+		}
+		return nil
+	})
+}
