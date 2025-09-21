@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/GitH3ll/Marksman/internal/config"
+	"github.com/google/uuid"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
@@ -31,9 +32,8 @@ type Warning struct {
 
 // CreateWarning inserts a new warning into the warnings table
 func CreateWarning(ctx context.Context, driver *ydb.Driver, userID, chatID, reason string) error {
-	// Generate a unique ID for the warning (using current timestamp for simplicity)
-	// In production, you might want to use a UUID or another method
-	warningID := fmt.Sprintf("%s_%s_%d", userID, chatID, time.Now().UnixNano())
+	// Generate a UUID for the warning
+	warningID := uuid.New().String()
 	
 	// Prepare the query
 	query := `
