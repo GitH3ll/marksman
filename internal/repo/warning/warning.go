@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	yc "github.com/ydb-platform/ydb-go-yc"
 )
 
@@ -51,11 +50,11 @@ func CreateWarning(ctx context.Context, driver *ydb.Driver, userID, chatID, reas
 	return driver.Table().Do(ctx, func(ctx context.Context, session table.Session) error {
 		_, _, err := session.Execute(ctx, table.DefaultTxControl(), query,
 			table.NewQueryParameters(
-				table.ValueParam("$id", named.UTF8Value(warningID)),
-				table.ValueParam("$user_id", named.UTF8Value(userID)),
-				table.ValueParam("$chat_id", named.UTF8Value(chatID)),
-				table.ValueParam("$reason", named.UTF8Value(reason)),
-				table.ValueParam("$created_at", named.TimestampValueFromTime(time.Now())),
+				table.ValueParam("$id", ydb.UTF8Value(warningID)),
+				table.ValueParam("$user_id", ydb.UTF8Value(userID)),
+				table.ValueParam("$chat_id", ydb.UTF8Value(chatID)),
+				table.ValueParam("$reason", ydb.UTF8Value(reason)),
+				table.ValueParam("$created_at", ydb.TimestampValueFromTime(time.Now())),
 			),
 		)
 		if err != nil {
