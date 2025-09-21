@@ -20,6 +20,29 @@ var (
 	driver *ydb.Driver
 )
 
+func init() {
+	// Load configuration
+	cfg, err := config.LoadConfig("marksman")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Initialize Telegram bot
+	bot, err = tgbotapi.NewBotAPI(cfg.TelegramToken)
+	if err != nil {
+		log.Fatalf("Failed to create bot: %v", err)
+	}
+	log.Printf("Authorized on account %s", bot.Self.UserName)
+
+	// Initialize YDB driver
+	ctx := context.Background()
+	driver, err = warning.Connect(ctx, cfg.YDBConfig)
+	if err != nil {
+		log.Fatalf("Failed to connect to YDB: %v", err)
+	}
+	log.Println("Connected to YDB successfully")
+}
+
 // Handler is the entry point for Yandex Cloud Function
 func Handler(w http.ResponseWriter, r *http.Request) {
 	// Parse the update from Telegram
@@ -190,26 +213,8 @@ func main() {
 	// This is just for local testing, Yandex Cloud Function will call Handler directly
 	// For local testing, we can run a simple HTTP server
 	if os.Getenv("YC_HANDLER") != "true" {
-		// Load configuration
-		cfg, err := config.LoadConfig("marksman")
-		if err != nil {
-			log.Fatalf("Failed to load config: %v", err)
-		}
-
-		// Initialize Telegram bot
-		bot, err = tgbotapi.NewBotAPI(cfg.TelegramToken)
-		if err != nil {
-			log.Fatalf("Failed to create bot: %v", err)
-		}
-
-		// Initialize YDB driver
-		ctx := context.Background()
-		driver, err = warning.Connect(ctx, cfg.YDBConfig)
-		if err != nil {
-			log.Fatalf("Failed to connect to YDB: %v", err)
-		}
-		defer driver.Close(ctx)
-
+		defer driver.Close(context.Background())
+		
 		// Start the HTTP server for local testing
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			// Parse the update from Telegram
