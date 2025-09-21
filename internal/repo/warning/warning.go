@@ -2,116 +2,16 @@ package warning
 
 import (
 	"context"
-	"fmt"
-	"log"
-	"time"
 
+	"github.com/GitH3ll/Marksman/internal/config"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table"
-	yc "github.com/ydb-platform/ydb-go-yc" // For automatic auth in Yandex Cloud
+	yc "github.com/ydb-platform/ydb-go-yc"
 )
 
-// YDBConfig holds configuration for YDB connection
-type YDBConfig struct {
-	Endpoint string
-	Database string
-}
-
-// YDBConnection represents a connection to YDB
-type YDBConnection struct {
-	driver *ydb.Driver
-	config *YDBConfig
-}
-
-// NewYDBConnection creates a new YDB connection instance
-func NewYDBConnection(config *YDBConfig) *YDBConnection {
-	return &YDBConnection{
-		config: config,
-	}
-}
-
-// Connect establishes a connection to YDB using automatic authentication in Yandex Cloud
-func (c *YDBConnection) Connect(ctx context.Context) error {
-	// In Yandex Cloud Function, we can use yc.WithMetadataCredentials which automatically
-	// gets the appropriate token from the metadata service
-	opts := []ydb.Option{
-		yc.WithMetadataCredentials(ctx), // This handles authentication automatically
-		ydb.WithDialTimeout(10 * time.Second),
-		ydb.WithSessionPoolSizeLimit(10),
-	}
-	
-	// Create the driver
-	driver, err := ydb.Open(ctx,
-		fmt.Sprintf("grpcs://%s/%s", c.config.Endpoint, c.config.Database),
-		opts...,
+func Connect(ctx context.Context, config config.YDBConfig) (*ydb.Driver, error) {
+	return ydb.Open(ctx,
+		config.Endpoint,
+		yc.WithInternalCA(),
+		yc.WithMetadataCredentials(),
 	)
-	if err != nil {
-		return fmt.Errorf("failed to connect to YDB: %w", err)
-	}
-	
-	c.driver = driver
-	log.Println("Successfully connected to YDB")
-	return nil
-}
-
-// Close closes the YDB connection
-func (c *YDBConnection) Close(ctx context.Context) error {
-	if c.driver != nil {
-		return c.driver.Close(ctx)
-	}
-	return nil
-}
-
-// Driver returns the underlying YDB driver
-func (c *YDBConnection) Driver() *ydb.Driver {
-	return c.driver
-}
-
-// HealthCheck performs a basic health check on the connection
-func (c *YDBConnection) HealthCheck(ctx context.Context) error {
-	if c.driver == nil {
-		return fmt.Errorf("driver is not initialized")
-	}
-	
-	// Check if the connection is alive by getting the current time from the database
-	var currentTime time.Time
-	// Use the correct way to execute a query with the current SDK version
-	err := c.driver.Table().Do(ctx, func(ctx context.Context, session table.Session) error {
-		// Prepare the transaction control
-		txc := table.TxControl(table.BeginTx(table.WithOnlineReadOnly()), table.CommitTx())
-		
-		// Execute the query
-		res, err := session.Execute(ctx, txc, "SELECT CurrentUtcTimestamp() AS timestamp", nil)
-		if err != nil {
-			return err
-		}
-		defer res.Close()
-		
-		// Process the result
-		if !res.NextResultSet(ctx) || !res.NextRow() {
-			return fmt.Errorf("no rows returned")
-		}
-		
-		// Scan the result
-		err = res.ScanNamed(
-			table.OptionalWithDefault("timestamp", &currentTime),
-		)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	
-	if err != nil {
-		return fmt.Errorf("health check failed: %w", err)
-	}
-	
-	log.Printf("Health check passed. Current database time: %v", currentTime)
-	return nil
-}
-
-// GetConnection returns the YDB driver which can be used to execute queries
-// This is useful for the actual handler to use
-func (c *YDBConnection) GetConnection() *ydb.Driver {
-	return c.driver
 }
