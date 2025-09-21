@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
-	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
+	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	yc "github.com/ydb-platform/ydb-go-yc"
 )
 
@@ -23,10 +23,10 @@ func Connect(ctx context.Context, config config.YDBConfig) (*ydb.Driver, error) 
 
 // Warning represents a warning entry in the database
 type Warning struct {
-	ID     string `json:"id"`
-	UserID string `json:"user_id"`
-	ChatID string `json:"chat_id"`
-	Reason string `json:"reason"`
+	ID     uuid.UUID `json:"id"`
+	UserID string    `json:"user_id"`
+	ChatID string    `json:"chat_id"`
+	Reason string    `json:"reason"`
 }
 
 // CreateWarning inserts a new warning into the warnings table
@@ -75,7 +75,7 @@ func GetWarningsByUserAndChat(ctx context.Context, driver *ydb.Driver, userID, c
 	`
 
 	var warnings []Warning
-	
+
 	// Execute the query
 	err := driver.Table().Do(ctx, func(ctx context.Context, session table.Session) error {
 		_, res, err := session.Execute(ctx, table.DefaultTxControl(), query,
@@ -88,15 +88,15 @@ func GetWarningsByUserAndChat(ctx context.Context, driver *ydb.Driver, userID, c
 			return fmt.Errorf("failed to execute query: %w", err)
 		}
 		defer res.Close()
-		
+
 		// Scan the results
 		for res.NextResultSet(ctx) {
 			for res.NextRow() {
 				var warning Warning
 				err := res.ScanNamed(
-					named.Optional("id", &warning.ID),
-					named.Optional("user_id", &warning.UserID),
-					named.Optional("chat_id", &warning.ChatID),
+					named.Required("id", &warning.ID),
+					named.Required("user_id", &warning.UserID),
+					named.Required("chat_id", &warning.ChatID),
 					named.Optional("reason", &warning.Reason),
 				)
 				if err != nil {
@@ -107,10 +107,10 @@ func GetWarningsByUserAndChat(ctx context.Context, driver *ydb.Driver, userID, c
 		}
 		return res.Err()
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return warnings, nil
 }
