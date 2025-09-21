@@ -20,8 +20,8 @@ var (
 	driver *ydb.Driver
 )
 
-// YCFHandler is the entry point for Yandex Cloud Function
-func YCFHandler(w http.ResponseWriter, r *http.Request) {
+// Handler is the entry point for Yandex Cloud Function
+func Handler(w http.ResponseWriter, r *http.Request) {
 	// Parse the update from Telegram
 	var update tgbotapi.Update
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
@@ -51,24 +51,17 @@ func handleUpdate(update tgbotapi.Update) error {
 		return nil
 	}
 
-	// Check if the user is an admin for certain commands
-	command := update.Message.Command()
-	if command == "warn" || command == "bang" || command == "pardon" {
-		isAdmin, err := isAdmin(update)
-		if err != nil {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Error checking admin status")
-			bot.Send(msg)
-			return err
-		}
-		if !isAdmin {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "You need to be an admin with ban permissions to use this command")
-			bot.Send(msg)
-			return nil
-		}
+	allowed, err := isAdmin(update)
+	if err != nil {
+		return fmt.Errorf("admin verification failed: %w", err)
+	}
+
+	if !allowed {
+		return nil
 	}
 
 	// Handle different commands
-	switch command {
+	switch update.Message.Command() {
 	case "warn":
 		return handleWarnCommand(update.Message)
 	case "bang":
@@ -163,7 +156,7 @@ func isAdmin(update tgbotapi.Update) (bool, error) {
 		if admin.User.ID == update.Message.From.ID {
 			// Check if the admin has the can_restrict_members permission
 			// Note: Some fields might be nil, so we need to handle that
-			if admin.CanRestrictMembers != nil && *admin.CanRestrictMembers {
+			if admin.CanRestrictMembers {
 				return true, nil
 			}
 			// For supergroup admins, the status might indicate they're the creator who has all permissions
@@ -215,7 +208,7 @@ func main() {
 	defer driver.Close(ctx)
 
 	// Start the HTTP server for Yandex Cloud Function
-	http.HandleFunc("/", YCFHandler)
+	http.HandleFunc("/", Handler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
