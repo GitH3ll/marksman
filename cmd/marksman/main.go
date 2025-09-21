@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -21,26 +21,32 @@ var (
 )
 
 func init() {
+	// Set up structured logging
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	
 	// Load configuration
 	cfg, err := config.LoadConfig("marksman")
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize Telegram bot
 	bot, err = tgbotapi.NewBotAPI(cfg.TelegramToken)
 	if err != nil {
-		log.Fatalf("Failed to create bot: %v", err)
+		slog.Error("Failed to create bot", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Authorized on account %s", bot.Self.UserName)
+	slog.Info("Authorized on account", "username", bot.Self.UserName)
 
 	// Initialize YDB driver
 	ctx := context.Background()
 	driver, err = warning.Connect(ctx, cfg.YDBConfig)
 	if err != nil {
-		log.Fatalf("Failed to connect to YDB: %v", err)
+		slog.Error("Failed to connect to YDB", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Connected to YDB successfully")
+	slog.Info("Connected to YDB successfully")
 }
 
 // Handler is the entry point for Yandex Cloud Function
@@ -48,14 +54,14 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	// Parse the update from Telegram
 	var update tgbotapi.Update
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		log.Printf("Error decoding update: %v", err)
+		slog.Error("Error decoding update", "error", err)
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
 	// Handle the update
 	if err := handleUpdate(update); err != nil {
-		log.Printf("Error handling update: %v", err)
+		slog.Error("Error handling update", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -220,14 +226,14 @@ func main() {
 			// Parse the update from Telegram
 			var update tgbotapi.Update
 			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-				log.Printf("Error decoding update: %v", err)
+				slog.Error("Error decoding update", "error", err)
 				http.Error(w, "Bad Request", http.StatusBadRequest)
 				return
 			}
 
 			// Handle the update
 			if err := handleUpdate(update); err != nil {
-				log.Printf("Error handling update: %v", err)
+				slog.Error("Error handling update", "error", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
@@ -240,7 +246,7 @@ func main() {
 			port = "8080"
 		}
 
-		log.Printf("Starting local test server on port %s", port)
-		log.Fatal(http.ListenAndServe(":"+port, nil))
+		slog.Info("Starting local test server", "port", port)
+		slog.Error("Server exited", "error", http.ListenAndServe(":"+port, nil))
 	}
 }

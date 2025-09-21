@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/kelseyhightower/envconfig"
 )
@@ -27,6 +27,6 @@ func LoadConfig(appName string) (*Config, error) {
 		return nil, fmt.Errorf("failed to process envconfig: %w", err)
 	}
 
-	log.Println("Configuration loaded successfully")
+	slog.Info("Configuration loaded successfully")
 	return &cfg, nil
 }
