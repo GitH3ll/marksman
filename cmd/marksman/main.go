@@ -51,8 +51,24 @@ func handleUpdate(update tgbotapi.Update) error {
 		return nil
 	}
 
+	// Check if the user is an admin for certain commands
+	command := update.Message.Command()
+	if command == "warn" || command == "bang" || command == "pardon" {
+		isAdmin, err := isAdmin(update)
+		if err != nil {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Error checking admin status")
+			bot.Send(msg)
+			return err
+		}
+		if !isAdmin {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "You need to be an admin with ban permissions to use this command")
+			bot.Send(msg)
+			return nil
+		}
+	}
+
 	// Handle different commands
-	switch update.Message.Command() {
+	switch command {
 	case "warn":
 		return handleWarnCommand(update.Message)
 	case "bang":
@@ -122,6 +138,42 @@ func handlePardonCommand(message *tgbotapi.Message) error {
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
 	_, err := bot.Send(msg)
 	return err
+}
+
+func isAdmin(update tgbotapi.Update) (bool, error) {
+	// Check if the message is from a group chat
+	if update.Message.Chat.IsPrivate() {
+		return false, nil
+	}
+
+	// Get chat administrators
+	chatConfig := tgbotapi.ChatAdministratorsConfig{
+		ChatConfig: tgbotapi.ChatConfig{
+			ChatID: update.Message.Chat.ID,
+		},
+	}
+
+	admins, err := bot.GetChatAdministrators(chatConfig)
+	if err != nil {
+		return false, fmt.Errorf("failed to get chat administrators: %w", err)
+	}
+
+	// Check if the sender is among the administrators
+	for _, admin := range admins {
+		if admin.User.ID == update.Message.From.ID {
+			// Check if the admin has the can_restrict_members permission
+			// Note: Some fields might be nil, so we need to handle that
+			if admin.CanRestrictMembers != nil && *admin.CanRestrictMembers {
+				return true, nil
+			}
+			// For supergroup admins, the status might indicate they're the creator who has all permissions
+			if admin.Status == "creator" {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
 
 func handleCrimesCommand(message *tgbotapi.Message) error {
