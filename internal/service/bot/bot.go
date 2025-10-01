@@ -51,7 +51,7 @@ func (s *BotService) HandleUpdate(ctx context.Context, update tgbotapi.Update) e
 	case "pardon":
 		return s.handlePardonCommand(ctx, update.Message)
 	case "crimes":
-		return s.handleCrimesCommand(update.Message)
+		return s.handleCrimesCommand(ctx, update.Message)
 	default:
 		// Ignore other commands
 		return nil
@@ -260,19 +260,48 @@ func (s *BotService) isAdmin(update tgbotapi.Update) (bool, error) {
 	return false, nil
 }
 
-func (s *BotService) handleCrimesCommand(message *tgbotapi.Message) error {
-	// List warnings for a user
-	parts := strings.SplitN(message.Text, " ", 2)
-	if len(parts) < 2 {
-		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /crimes @username")
+func (s *BotService) handleCrimesCommand(ctx context.Context, message *tgbotapi.Message) error {
+	// Check if the command is used in reply to another message
+	if message.ReplyToMessage == nil {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: Please reply to the user's message with /crimes")
 		_, err := s.bot.Send(msg)
 		return err
 	}
 
-	targetUsername := strings.TrimPrefix(parts[1], "@")
+	// Get the user from the replied message
+	targetUserID := message.ReplyToMessage.From.ID
+	targetUsername := message.ReplyToMessage.From.UserName
 
-	response := fmt.Sprintf("Crimes for @%s: ...", targetUsername)
+	// Convert user ID and chat ID to strings for the database
+	userIDStr := fmt.Sprintf("%d", targetUserID)
+	chatIDStr := fmt.Sprintf("%d", message.Chat.ID)
+
+	// Get existing warnings
+	warnings, err := warning.GetWarningsByUserAndChat(ctx, s.driver, userIDStr, chatIDStr)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to get warnings: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, errorMsg)
+		s.bot.Send(msg)
+		return err
+	}
+
+	// Format the response
+	var response string
+	if len(warnings) == 0 {
+		response = fmt.Sprintf("@%s has no warnings.", targetUsername)
+	} else {
+		response = fmt.Sprintf("Warnings for @%s (%d):\n", targetUsername, len(warnings))
+		for i, w := range warnings {
+			// Handle potential nil reason
+			reason := w.Reason
+			if reason == "" {
+				reason = "No reason provided"
+			}
+			response += fmt.Sprintf("%d. %s\n", i+1, reason)
+		}
+	}
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
-	_, err := s.bot.Send(msg)
+	_, err = s.bot.Send(msg)
 	return err
 }
