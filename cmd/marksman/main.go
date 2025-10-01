@@ -70,22 +70,16 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// This is just for local testing, Yandex Cloud Function will call Handler directly
+	// Yandex Cloud Functions will call the Handler function directly
 	// For local testing, we can run a simple HTTP server
-	if os.Getenv("YC_HANDLER") != "true" {
-		// Note: We need to close the driver, but it's now inside the service
-		// We'll need to handle this differently, perhaps by exposing it
-		// For now, we'll leave it as is
+	// Start the HTTP server for local testing
+	http.HandleFunc("/", Handler)
 
-		// Start the HTTP server for local testing
-		http.HandleFunc("/", Handler)
-
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "8080"
-		}
-
-		slog.Info("Starting local test server", "port", port)
-		slog.Error("Server exited", "error", http.ListenAndServe(":"+port, nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
+
+	slog.Info("Starting local test server", "port", port)
+	slog.Error("Server exited", "error", http.ListenAndServe(":"+port, nil))
 }

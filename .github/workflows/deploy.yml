@@ -1,0 +1,49 @@
+name: Deploy to Yandex Cloud Function
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  FUNCTION_NAME: marksman
+  RUNTIME: golang116
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Build binary
+      run: |
+        cd cmd/marksman
+        GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bootstrap
+        
+    - name: Create deployment package
+      run: |
+        cd cmd/marksman
+        zip -j marksman.zip bootstrap
+        
+    - name: Configure Yandex Cloud CLI
+      uses: yc-actions/yc-initialize@v1
+      with:
+        yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+        
+    - name: Deploy to Yandex Cloud Function
+      run: |
+        yc serverless function version create \
+          --function-name=${{ env.FUNCTION_NAME }} \
+          --runtime ${{ env.RUNTIME }} \
+          --entrypoint bootstrap \
+          --memory 128m \
+          --execution-timeout 10s \
+          --source-path ./cmd/marksman/marksman.zip \
+          --environment TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }},YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }},YDB_DATABASE=${{ secrets.YDB_DATABASE }}
