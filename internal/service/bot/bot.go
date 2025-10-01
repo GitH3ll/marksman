@@ -22,7 +22,7 @@ func NewBotService(bot *tgbotapi.BotAPI, driver *ydb.Driver) *BotService {
 	}
 }
 
-func (s *BotService) HandleUpdate(update tgbotapi.Update) error {
+func (s *BotService) HandleUpdate(ctx context.Context, update tgbotapi.Update) error {
 	// We're only interested in messages for now
 	if update.Message == nil {
 		return nil
@@ -45,7 +45,7 @@ func (s *BotService) HandleUpdate(update tgbotapi.Update) error {
 	// Handle different commands
 	switch update.Message.Command() {
 	case "warn":
-		return s.handleWarnCommand(update.Message.Context(), update.Message)
+		return s.handleWarnCommand(ctx, update.Message)
 	case "bang":
 		return s.handleBangCommand(update.Message)
 	case "pardon":
