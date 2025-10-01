@@ -82,21 +82,60 @@ func (s *BotService) handleWarnCommand(message *tgbotapi.Message) error {
 // 1 - /bang @id {reason} - default
 // 2 - /bang reason - has to be a reply from which userID can be extracted. If a reply, must also delete the message to which it replies.
 func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
-	// Check if the command is used in reply to another message
-	if message.ReplyToMessage == nil {
-		msg := tgbotapi.NewMessage(message.Chat.ID, "Please reply to the user's message to ban them")
+	var targetUserID int64
+	var targetUsername string
+	var reason string
+
+	// Check if the command is used in reply to another message (format 2)
+	if message.ReplyToMessage != nil {
+		// Get the user to ban from the replied message
+		targetUserID = message.ReplyToMessage.From.ID
+		targetUsername = message.ReplyToMessage.From.UserName
+		
+		// Extract reason
+		parts := strings.SplitN(message.Text, " ", 2)
+		if len(parts) >= 2 {
+			reason = parts[1]
+		} else {
+			reason = "No reason provided"
+		}
+		
+		// Delete the replied-to message
+		deleteConfig := tgbotapi.DeleteMessageConfig{
+			ChatID:    message.Chat.ID,
+			MessageID: message.ReplyToMessage.MessageID,
+		}
+		_, err := s.bot.Request(deleteConfig)
+		if err != nil {
+			// Log the error but don't fail the entire operation
+			// Some messages might not be deletable due to various reasons
+		}
+	} else {
+		// Format 1: /bang @id {reason}
+		parts := strings.SplitN(message.Text, " ", 3)
+		if len(parts) < 3 {
+			msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /bang @username reason (or reply to a message with /bang reason)")
+			_, err := s.bot.Send(msg)
+			return err
+		}
+		
+		// Extract target username and reason
+		targetUsername = strings.TrimPrefix(parts[1], "@")
+		reason = parts[2]
+		
+		// In a real implementation, we need to resolve username to user ID
+		// Since the Bot API doesn't provide a direct way to do this, we'll need to find another approach
+		// For now, we'll send an error message
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Banning by username is not yet implemented. Please reply to the user's message instead.")
 		_, err := s.bot.Send(msg)
 		return err
 	}
 
-	// Get the user to ban from the replied message
-	targetUserID := message.ReplyToMessage.From.ID
-
-	// Extract reason
-	parts := strings.SplitN(message.Text, " ", 2)
-	reason := "No reason provided"
-	if len(parts) >= 2 {
-		reason = parts[1]
+	// If we don't have a valid user ID, we can't proceed
+	if targetUserID == 0 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Could not determine user to ban. Please make sure to reply to the user's message.")
+		_, err := s.bot.Send(msg)
+		return err
 	}
 
 	// Ban the user
@@ -117,7 +156,7 @@ func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 	}
 
 	// Send confirmation message
-	response := fmt.Sprintf("User @%s has been banned. Reason: %s", message.ReplyToMessage.From.UserName, reason)
+	response := fmt.Sprintf("User @%s has been banned. Reason: %s", targetUsername, reason)
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
 	_, err = s.bot.Send(msg)
 	return err
