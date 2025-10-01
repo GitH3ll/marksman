@@ -49,7 +49,7 @@ func (s *BotService) HandleUpdate(ctx context.Context, update tgbotapi.Update) e
 	case "bang":
 		return s.handleBangCommand(update.Message)
 	case "pardon":
-		return s.handlePardonCommand(update.Message)
+		return s.handlePardonCommand(ctx, update.Message)
 	case "crimes":
 		return s.handleCrimesCommand(update.Message)
 	default:
@@ -192,20 +192,35 @@ func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 	return err
 }
 
-func (s *BotService) handlePardonCommand(message *tgbotapi.Message) error {
-	// Remove warnings for a user
-	parts := strings.SplitN(message.Text, " ", 2)
-	if len(parts) < 2 {
-		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /pardon @username")
+func (s *BotService) handlePardonCommand(ctx context.Context, message *tgbotapi.Message) error {
+	// Check if the command is used in reply to another message
+	if message.ReplyToMessage == nil {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: Please reply to the user's message with /pardon")
 		_, err := s.bot.Send(msg)
 		return err
 	}
 
-	targetUsername := strings.TrimPrefix(parts[1], "@")
+	// Get the user to pardon from the replied message
+	targetUserID := message.ReplyToMessage.From.ID
+	targetUsername := message.ReplyToMessage.From.UserName
 
-	response := fmt.Sprintf("Pardoned @%s", targetUsername)
+	// Convert user ID and chat ID to strings for the database
+	userIDStr := fmt.Sprintf("%d", targetUserID)
+	chatIDStr := fmt.Sprintf("%d", message.Chat.ID)
+
+	// Delete all warnings for the user in this chat
+	err := warning.DeleteWarningsByUserAndChat(ctx, s.driver, userIDStr, chatIDStr)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to pardon user: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, errorMsg)
+		s.bot.Send(msg)
+		return err
+	}
+
+	// Send confirmation message
+	response := fmt.Sprintf("All warnings for @%s have been removed", targetUsername)
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
-	_, err := s.bot.Send(msg)
+	_, err = s.bot.Send(msg)
 	return err
 }
 
