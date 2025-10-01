@@ -44,7 +44,7 @@ func (s *BotService) HandleUpdate(update tgbotapi.Update) error {
 	// Handle different commands
 	switch update.Message.Command() {
 	case "warn":
-		return s.handleWarnCommand(update.Message)
+		return s.handleWarnCommand(update.Message.Context(), update.Message)
 	case "bang":
 		return s.handleBangCommand(update.Message)
 	case "pardon":
@@ -57,7 +57,7 @@ func (s *BotService) HandleUpdate(update tgbotapi.Update) error {
 	}
 }
 
-func (s *BotService) handleWarnCommand(message *tgbotapi.Message) error {
+func (s *BotService) handleWarnCommand(ctx context.Context, message *tgbotapi.Message) error {
 	// Check if the command is used in reply to another message
 	if message.ReplyToMessage == nil {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: Please reply to the user's message with /warn reason")
@@ -83,7 +83,7 @@ func (s *BotService) handleWarnCommand(message *tgbotapi.Message) error {
 	chatIDStr := fmt.Sprintf("%d", message.Chat.ID)
 
 	// Get existing warnings
-	warnings, err := warning.GetWarningsByUserAndChat(message.Context(), s.driver, userIDStr, chatIDStr)
+	warnings, err := warning.GetWarningsByUserAndChat(ctx, s.driver, userIDStr, chatIDStr)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to get warnings: %v", err)
 		msg := tgbotapi.NewMessage(message.Chat.ID, errorMsg)
@@ -117,7 +117,7 @@ func (s *BotService) handleWarnCommand(message *tgbotapi.Message) error {
 		return err
 	} else {
 		// Add a new warning
-		err := warning.CreateWarning(message.Context(), s.driver, userIDStr, chatIDStr, reason)
+		err := warning.CreateWarning(ctx, s.driver, userIDStr, chatIDStr, reason)
 		if err != nil {
 			errorMsg := fmt.Sprintf("Failed to create warning: %v", err)
 			msg := tgbotapi.NewMessage(message.Chat.ID, errorMsg)
