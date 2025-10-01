@@ -61,7 +61,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle the update
-	if err := botService.HandleUpdate(update); err != nil {
+	if err := botService.HandleUpdate(r.Context(), update); err != nil {
 		slog.Error("Error handling update", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
