@@ -80,20 +80,44 @@ func (s *BotService) handleWarnCommand(message *tgbotapi.Message) error {
 }
 
 func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
-	// Similar to warn but with different action
-	parts := strings.SplitN(message.Text, " ", 3)
-	if len(parts) < 3 {
-		msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /bang @username reason")
+	// Check if the command is used in reply to another message
+	if message.ReplyToMessage == nil {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Please reply to the user's message to ban them")
 		_, err := s.bot.Send(msg)
 		return err
 	}
 
-	targetUsername := strings.TrimPrefix(parts[1], "@")
-	reason := parts[2]
+	// Get the user to ban from the replied message
+	targetUserID := message.ReplyToMessage.From.ID
 
-	response := fmt.Sprintf("Banged @%s: %s", targetUsername, reason)
+	// Extract reason
+	parts := strings.SplitN(message.Text, " ", 2)
+	reason := "No reason provided"
+	if len(parts) >= 2 {
+		reason = parts[1]
+	}
+
+	// Ban the user
+	banConfig := tgbotapi.BanChatMemberConfig{
+		ChatMemberConfig: tgbotapi.ChatMemberConfig{
+			ChatID: message.Chat.ID,
+			UserID: targetUserID,
+		},
+		RevokeMessages: true,
+	}
+
+	_, err := s.bot.Request(banConfig)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to ban user: %v", err)
+		msg := tgbotapi.NewMessage(message.Chat.ID, errorMsg)
+		s.bot.Send(msg)
+		return err
+	}
+
+	// Send confirmation message
+	response := fmt.Sprintf("User @%s has been banned. Reason: %s", message.ReplyToMessage.From.UserName, reason)
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
-	_, err := s.bot.Send(msg)
+	_, err = s.bot.Send(msg)
 	return err
 }
 
