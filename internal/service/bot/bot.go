@@ -78,9 +78,8 @@ func (s *BotService) handleWarnCommand(message *tgbotapi.Message) error {
 	return err
 }
 
-// handleBangCommand implements ban user functionality. For a valid response the message has to adhere to one of the two formats:
-// 1 - /bang @id {reason} - default
-// 2 - /bang reason - has to be a reply from which userID can be extracted. If a reply, must also delete the message to which it replies.
+// handleBangCommand implements ban user functionality. For a valid response the message has to adhere the format:
+// /bang reason - has to be a reply from which userID can be extracted. Must also delete the message to which it replies.
 func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 	var targetUserID int64
 	var targetUsername string
@@ -91,7 +90,7 @@ func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 		// Get the user to ban from the replied message
 		targetUserID = message.ReplyToMessage.From.ID
 		targetUsername = message.ReplyToMessage.From.UserName
-		
+
 		// Extract reason
 		parts := strings.SplitN(message.Text, " ", 2)
 		if len(parts) >= 2 {
@@ -99,7 +98,7 @@ func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 		} else {
 			reason = "No reason provided"
 		}
-		
+
 		// Delete the replied-to message
 		deleteConfig := tgbotapi.DeleteMessageConfig{
 			ChatID:    message.Chat.ID,
@@ -114,32 +113,36 @@ func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 		// Format 1: /bang @id {reason}
 		parts := strings.SplitN(message.Text, " ", 3)
 		if len(parts) < 3 {
-			msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /bang @user_id reason (or reply to a message with /bang reason)")
+			msg := tgbotapi.NewMessage(message.Chat.ID, "Usage: /bang @username reason (or reply to a message with /bang reason)")
 			_, err := s.bot.Send(msg)
 			return err
 		}
-		
-		// Extract target user ID and reason
-		// The @id is expected to be a numeric user ID (e.g., @123456789)
-		userIDStr := strings.TrimPrefix(parts[1], "@")
-		// Parse the user ID string to int64
-		var err error
-		targetUserID, err = parseUserID(userIDStr)
-		if err != nil {
-			msg := tgbotapi.NewMessage(message.Chat.ID, "Invalid user ID. Please provide a valid numeric user ID after @")
-			_, err := s.bot.Send(msg)
-			return err
-		}
+
+		// Extract target username and reason
+		targetUsername = strings.TrimPrefix(parts[1], "@")
 		reason = parts[2]
-		// For format 1, we don't have the username, so we'll use a generic identifier
-		targetUsername = "user_" + userIDStr
+
+		// In a real implementation, we need to resolve username to user ID
+		// Since the Bot API doesn't provide a direct way to do this, we'll need to find another approach
+		// For now, we'll send an error message
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Banning by username is not yet implemented. Please reply to the user's message instead.")
+		_, err := s.bot.Send(msg)
+		return err
+	}
+
+	// If we don't have a valid user ID, we can't proceed
+	if targetUserID == 0 {
+		msg := tgbotapi.NewMessage(message.Chat.ID, "Could not determine user to ban. Please make sure to reply to the user's message.")
+		_, err := s.bot.Send(msg)
+		return err
 	}
 
 	// Ban the user
 	banConfig := tgbotapi.BanChatMemberConfig{
 		ChatMemberConfig: tgbotapi.ChatMemberConfig{
-			ChatID: message.Chat.ID,
-			UserID: targetUserID,
+			ChatID:          message.Chat.ID,
+			UserID:          targetUserID,
+			ChannelUsername: targetUsername,
 		},
 		RevokeMessages: true,
 	}
@@ -157,16 +160,6 @@ func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
 	_, err = s.bot.Send(msg)
 	return err
-}
-
-// parseUserID converts a string to int64 user ID
-func parseUserID(userIDStr string) (int64, error) {
-	var userID int64
-	_, err := fmt.Sscanf(userIDStr, "%d", &userID)
-	if err != nil {
-		return 0, fmt.Errorf("invalid user ID format")
-	}
-	return userID, nil
 }
 
 func (s *BotService) handlePardonCommand(message *tgbotapi.Message) error {
