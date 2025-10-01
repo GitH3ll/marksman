@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -79,6 +78,9 @@ func (s *BotService) handleWarnCommand(message *tgbotapi.Message) error {
 	return err
 }
 
+// handleBangCommand implements ban user functionality. For a valid response the message has to adhere to one of the two formats:
+// 1 - /bang @id {reason} - default
+// 2 - /bang reason - has to be a reply from which userID can be extracted. If a reply, must also delete the message to which it replies.
 func (s *BotService) handleBangCommand(message *tgbotapi.Message) error {
 	// Check if the command is used in reply to another message
 	if message.ReplyToMessage == nil {
