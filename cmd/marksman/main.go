@@ -11,7 +11,6 @@ import (
 	"github.com/GitH3ll/Marksman/internal/repo/warning"
 	"github.com/GitH3ll/Marksman/internal/service/bot"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
 
 var (
@@ -21,7 +20,7 @@ var (
 func init() {
 	// Set up structured logging
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	
+
 	// Load configuration
 	cfg, err := config.LoadConfig("marksman")
 	if err != nil {
@@ -77,7 +76,7 @@ func main() {
 		// Note: We need to close the driver, but it's now inside the service
 		// We'll need to handle this differently, perhaps by exposing it
 		// For now, we'll leave it as is
-		
+
 		// Start the HTTP server for local testing
 		http.HandleFunc("/", Handler)
 
