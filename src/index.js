@@ -85,7 +85,7 @@ async function processInlineMessage(msg, env) {
   console.log(`[WHITELIST] Checking @${viaBotUsername} for chat ${chatId}`);
 
   try {
-    const whitelistKey = "whitelist:" + chatId;
+    const whitelistKey = String(chatId);
     const whitelistStr = await env.WHITELIST_KV.get(whitelistKey);
     console.log(`[KV] Read whitelist for chat ${chatId}: ${whitelistStr ? 'found' : 'empty/not found'}`);
     
@@ -160,7 +160,7 @@ async function handleCommand(msg, env) {
     
     console.log(`[CMD] Action: "${action}", Target: "${targetBot || 'N/A'}"`);
 
-    const whitelistKey = "whitelist:" + chatId;
+    const whitelistKey = String(chatId);
     let whitelistStr = await env.WHITELIST_KV.get(whitelistKey);
     let list = whitelistStr ? whitelistStr.split(",").map(s => s.trim()) : [];
     console.log(`[KV] Current whitelist for chat ${chatId}: [${list.join(', ')}]`);
@@ -232,7 +232,7 @@ async function handleCommand(msg, env) {
 async function saveWhitelist(env, list, chatId) {
   const cleanList = list.filter(Boolean);
   const listStr = cleanList.join(",");
-  const whitelistKey = "whitelist:" + chatId;
+  const whitelistKey = String(chatId);
   console.log(`[KV] Writing whitelist for chat ${chatId}: [${listStr || 'empty'}]`);
   
   try {
