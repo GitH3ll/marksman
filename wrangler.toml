@@ -6,4 +6,4 @@ compatibility_date = "2024-01-01"
 # This tells Wrangler that the code expects a variable named WHITELIST_KV
 [[kv_namespaces]]
 binding = "WHITELIST_KV"
-id = "PLACEHOLDER_ID_DASHBOARD_WILL_OVERRIDE"
+id = "e3d984c363ad430a89c2d7624f7d0dda"
