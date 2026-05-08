@@ -165,7 +165,6 @@ async function handleCommand(msg, env) {
     console.log(`[AUTH] Granted: ${senderLabel} has admin permissions`);
 
     const parts = text.split(/\s+/);
-    const commandName = parts[0]?.toLowerCase();
     const action = parts[1]?.toLowerCase();
     const botNames = parts.slice(2).map(b => b.replace(/^@/, "").toLowerCase()).filter(Boolean);
     
