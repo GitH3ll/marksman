@@ -18,8 +18,15 @@ export async function saveWhitelist(env, list, chatId) {
  * Check admin permissions.
  * NOTE: Telegram's API does not support verifying anonymous admins via getChatMember.
  * We trust them because Telegram only allows group admins to post anonymously.
+ *
+ * @param {string} token - Telegram bot token
+ * @param {number|string} chatId - Chat ID
+ * @param {number|string} userId - User ID to check
+ * @param {boolean} [isAnonymous=false] - Whether the user is an anonymous admin
+ * @param {string[]} [requiredPermissions=['can_delete_messages']] - List of required admin permissions
+ * @returns {Promise<boolean>} - Whether the user has all required permissions
  */
-export async function checkAdminPermissions(token, chatId, userId, isAnonymous = false) {
+export async function checkAdminPermissions(token, chatId, userId, isAnonymous = false, requiredPermissions = ['can_delete_messages']) {
   if (isAnonymous) {
     console.log(`[AUTH] Anonymous admin detected. Trusting as admin (Telegram restricts anonymous posting to admins only).`);
     return true;
@@ -41,11 +48,22 @@ export async function checkAdminPermissions(token, chatId, userId, isAnonymous =
     }
     
     const member = res.result;
-    const isAdmin = member.status === "creator" || 
-                   (member.status === "administrator" && member.can_delete_messages);
     
-    console.log(`[API] User ${userId} - status: ${member.status}, can_delete: ${member.can_delete_messages}, isAdmin: ${isAdmin}`);
-    return isAdmin;
+    // Creator has all permissions
+    if (member.status === "creator") {
+      console.log(`[API] User ${userId} - status: creator, has all permissions`);
+      return true;
+    }
+    
+    // Administrator must have all required permissions
+    if (member.status === "administrator") {
+      const hasAllPermissions = requiredPermissions.every(perm => member[perm] === true);
+      console.log(`[API] User ${userId} - status: administrator, required: [${requiredPermissions.join(', ')}], hasAll: ${hasAllPermissions}`);
+      return hasAllPermissions;
+    }
+    
+    console.log(`[API] User ${userId} - status: ${member.status}, not admin`);
+    return false;
     
   } catch (e) {
     console.error(`[API] getChatMember request failed:`, e.message, { chatId, userId });

@@ -148,7 +148,8 @@ async function handleCommand(msg, env) {
 
   try {
     console.log(`[AUTH] Checking admin permissions for ${senderLabel} in chat ${chatId}`);
-    const isAdmin = await checkAdminPermissions(token, chatId, userIdToCheck, isAnonymous);
+    // For /whitelist command, we need can_delete_messages permission
+    const isAdmin = await checkAdminPermissions(token, chatId, userIdToCheck, isAnonymous, ['can_delete_messages']);
     
     if (!isAdmin) {
       console.warn(`[AUTH] Denied: ${senderLabel} lacks admin permissions in chat ${chatId}`);
