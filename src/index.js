@@ -221,12 +221,10 @@ async function handleCommand(msg, env) {
         console.log(`[CMD] Invalid usage, sending help`);
       }
     } else if (commandName === "/mute") {
-      // /mute <duration> - must be a reply to a user message
-      if (!msg.reply_to_message || !msg.reply_to_message.from) {
-        responseText = "Use: /mute <duration> as a reply to a user message";
-        console.log(`[CMD] /mute: no reply message`);
-      } else {
-        const durationStr = action; // parts[1] is the duration
+      // /mute <duration> (reply) or /mute <user_id> <duration> (non-reply)
+      if (msg.reply_to_message && msg.reply_to_message.from) {
+        // Reply mode: /mute <duration>
+        const durationStr = parts[1]; // parts[1] is the duration
         const seconds = parseDuration(durationStr);
         if (seconds === null) {
           responseText = "Invalid duration format. Use e.g. 1d2h30m (d=days, h=hours, m=minutes)";
@@ -234,7 +232,7 @@ async function handleCommand(msg, env) {
         } else {
           const targetUserId = msg.reply_to_message.from.id;
           const untilDate = Math.floor(Date.now() / 1000) + seconds;
-          console.log(`[CMD] /mute: user ${targetUserId} for ${seconds}s until ${untilDate}`);
+          console.log(`[CMD] /mute (reply): user ${targetUserId} for ${seconds}s until ${untilDate}`);
 
           const muteResult = await apiRequest(token, "restrictChatMember", {
             chat_id: chatId,
@@ -258,6 +256,53 @@ async function handleCommand(msg, env) {
           } else {
             responseText = `Ошибка: ${muteResult.description || 'unknown'}`;
             console.warn(`[CMD] /mute: API error`, muteResult);
+          }
+        }
+      } else {
+        // Non-reply mode: /mute <user_id> <duration>
+        if (parts.length !== 3) {
+          responseText = "Use: /mute <user_id> <duration> (e.g., /mute 123456789 1d2h30m) or reply to a user message with /mute <duration>";
+          console.log(`[CMD] /mute: invalid non-reply usage, parts.length=${parts.length}`);
+        } else {
+          const userIdStr = parts[1];
+          const durationStr = parts[2];
+          const targetUserId = parseInt(userIdStr, 10);
+          if (isNaN(targetUserId)) {
+            responseText = "Invalid user ID. Please provide a numeric user ID.";
+            console.log(`[CMD] /mute: invalid user ID "${userIdStr}"`);
+          } else {
+            const seconds = parseDuration(durationStr);
+            if (seconds === null) {
+              responseText = "Invalid duration format. Use e.g. 1d2h30m (d=days, h=hours, m=minutes)";
+              console.log(`[CMD] /mute: invalid duration "${durationStr}"`);
+            } else {
+              const untilDate = Math.floor(Date.now() / 1000) + seconds;
+              console.log(`[CMD] /mute (non-reply): user ${targetUserId} for ${seconds}s until ${untilDate}`);
+
+              const muteResult = await apiRequest(token, "restrictChatMember", {
+                chat_id: chatId,
+                user_id: targetUserId,
+                permissions: {
+                  can_send_messages: false,
+                  can_send_media_messages: false,
+                  can_send_polls: false,
+                  can_send_other_messages: false,
+                  can_add_web_page_previews: false,
+                  can_change_info: false,
+                  can_invite_users: false,
+                  can_pin_messages: false,
+                },
+                until_date: untilDate,
+              });
+
+              if (muteResult.ok) {
+                responseText = `Пользователь замучен на ${durationStr}`;
+                console.log(`[CMD] /mute: success`);
+              } else {
+                responseText = `Ошибка: ${muteResult.description || 'unknown'}`;
+                console.warn(`[CMD] /mute: API error`, muteResult);
+              }
+            }
           }
         }
       }
