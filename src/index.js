@@ -35,6 +35,7 @@ async function processInlineMessage(msg, env) {
     whitelistStr.split(",").map(b => b.trim().toLowerCase()).filter(Boolean)
   );
 
+  // Delete if NOT whitelisted
   if (!allowedBots.has(viaBotUsername)) {
     await apiRequest(env.TELEGRAM_BOT_TOKEN, "deleteMessage", {
       chat_id: msg.chat.id,
@@ -49,7 +50,7 @@ async function handleCommand(msg, env) {
   const text = msg.text.trim();
   const token = env.TELEGRAM_BOT_TOKEN;
 
-  // Security Check
+  // Security Check: Admin only
   const isAdmin = await checkAdminPermissions(token, chatId, userId);
   if (!isAdmin) return;
 
@@ -67,9 +68,9 @@ async function handleCommand(msg, env) {
     if (!list.includes(targetBot)) {
       list.push(targetBot);
       await saveWhitelist(env, list);
-      responseText = `✅ <b>@${targetBot}</b> added to whitelist.`;
+      responseText = `@${targetBot} добавлен в белый список`;
     } else {
-      responseText = `⚠️ <b>@${targetBot}</b> is already whitelisted.`;
+      responseText = `@${targetBot} уже в белом списке`;
     }
   } 
   else if (action === "remove" && targetBot) {
@@ -78,26 +79,27 @@ async function handleCommand(msg, env) {
     
     if (list.length < initialLen) {
       await saveWhitelist(env, list);
-      responseText = `❌ <b>@${targetBot}</b> removed from whitelist.`;
+      responseText = `@${targetBot} удалён из белого списка`;
     } else {
-      responseText = `⚠️ <b>@${targetBot}</b> was not in the whitelist.`;
+      responseText = `@${targetBot} не в белом списке`;
     }
   } 
   else if (action === "list") {
     if (list.length === 0) {
-      responseText = "📋 Whitelist is empty. <b>All</b> inline bots will be deleted.";
+      responseText = "Empty";
     } else {
-      responseText = `📋 <b>Whitelisted Bots:</b>\n${list.map(b => `• @${b}`).join("\n")}`;
+      // Returns: @gif, @vid, @sticker
+      responseText = list.map(b => `@${b}`).join(", ");
     }
   } 
   else {
-    responseText = "Usage:\n/whitelist add @botname\n/whitelist remove @botname\n/whitelist list";
+    responseText = "Use: /whitelist add/remove/list @bot";
   }
 
+  // Reply with short message containing target
   await apiRequest(token, "sendMessage", {
     chat_id: chatId,
     text: responseText,
-    parse_mode: "HTML",
     reply_to_message_id: msg.message_id,
   });
 }
@@ -122,7 +124,6 @@ async function checkAdminPermissions(token, chatId, userId) {
     
     return false;
   } catch (e) {
-    console.error("Permission check error:", e);
     return false;
   }
 }
