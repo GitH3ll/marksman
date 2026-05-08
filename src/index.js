@@ -13,10 +13,8 @@ export default {
     const url = new URL(request.url);
     const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
     
-    // Basic request logging
     console.log(`[REQUEST] ${request.method} ${url.pathname} from ${clientIP}`);
 
-    // Only process POST requests (Telegram webhooks)
     if (request.method !== "POST") {
       console.log(`[SKIP] Non-POST request, returning 200`);
       return new Response("OK", { status: 200 });
@@ -30,25 +28,22 @@ export default {
       
       console.log(`[UPDATE] Type: ${updateType}, Chat: ${chatId}, User: ${userId}`);
 
-      // 1. Handle Commands (messages starting with /)
+      // 1. Handle Commands
       if (update.message?.text?.startsWith("/")) {
         const command = update.message.text.split(/\s+/)[0];
         console.log(`[COMMAND] Received: "${command}" in chat ${chatId}`);
         
-        // Run async, don't block response
         ctx.waitUntil(
           handleCommand(update.message, env)
             .then(() => console.log(`[COMMAND] Completed: "${command}"`))
             .catch(err => console.error(`[COMMAND] Failed:`, err.message, { 
-              command, 
-              chatId, 
-              stack: err.stack 
+              command, chatId, stack: err.stack 
             }))
         );
         return new Response("OK", { status: 200 });
       }
 
-      // 2. Handle Inline Bot Messages (auto-delete non-whitelisted)
+      // 2. Handle Inline Bot Messages
       const msg = update.message;
       if (msg?.via_bot) {
         const botUsername = msg.via_bot.username;
@@ -58,9 +53,7 @@ export default {
           processInlineMessage(msg, env)
             .then(() => console.log(`[INLINE] Processed @${botUsername}`))
             .catch(err => console.error(`[INLINE] Failed for @${botUsername}:`, err.message, { 
-              chatId: msg.chat.id, 
-              messageId: msg.message_id,
-              stack: err.stack 
+              chatId: msg.chat.id, messageId: msg.message_id, stack: err.stack 
             }))
         );
       }
@@ -84,9 +77,6 @@ export default {
 // MESSAGE PROCESSING
 // ============================================================================
 
-/**
- * Process inline bot messages - delete if bot not in whitelist
- */
 async function processInlineMessage(msg, env) {
   const viaBotUsername = msg.via_bot.username.toLowerCase();
   const chatId = msg.chat.id;
@@ -95,7 +85,6 @@ async function processInlineMessage(msg, env) {
   console.log(`[WHITELIST] Checking @${viaBotUsername} for chat ${chatId}`);
 
   try {
-    // Get whitelist from KV
     const whitelistStr = await env.WHITELIST_KV.get("whitelist");
     console.log(`[KV] Read whitelist: ${whitelistStr ? 'found' : 'empty/not found'}`);
     
@@ -103,7 +92,6 @@ async function processInlineMessage(msg, env) {
       (whitelistStr || "").split(",").map(b => b.trim().toLowerCase()).filter(Boolean)
     );
 
-    // Delete message if bot is NOT whitelisted
     if (!allowedBots.has(viaBotUsername)) {
       console.log(`[ACTION] @${viaBotUsername} not whitelisted, deleting message ${messageId}`);
       
@@ -118,8 +106,7 @@ async function processInlineMessage(msg, env) {
         console.warn(`[WARN] Telegram API deleteMessage failed:`, { 
           status: deleteResult.error_code, 
           description: deleteResult.description,
-          chatId, 
-          messageId 
+          chatId, messageId 
         });
       }
     } else {
@@ -127,11 +114,7 @@ async function processInlineMessage(msg, env) {
     }
   } catch (error) {
     console.error(`[ERROR] processInlineMessage failed:`, {
-      message: error.message,
-      viaBot: viaBotUsername,
-      chatId,
-      messageId,
-      stack: error.stack
+      message: error.message, stack: error.stack, viaBot: viaBotUsername, chatId, messageId
     });
     throw error;
   }
@@ -141,16 +124,12 @@ async function processInlineMessage(msg, env) {
 // COMMAND HANDLING
 // ============================================================================
 
-/**
- * Handle /whitelist commands (add/remove/list)
- * Supports both regular users and anonymous admins
- */
 async function handleCommand(msg, env) {
   const chatId = msg.chat.id;
   const text = msg.text.trim();
   const token = env.TELEGRAM_BOT_TOKEN;
 
-  // Detect anonymous admin: Telegram uses special user ID 1087968824
+  // Telegram uses 1087968824 for all anonymous admin messages
   const isAnonymous = msg.from?.id === 1087968824;
   const userIdToCheck = isAnonymous ? msg.sender_chat?.id : msg.from?.id;
   const senderLabel = isAnonymous 
@@ -159,17 +138,12 @@ async function handleCommand(msg, env) {
 
   console.log(`[CMD-HANDLE] ${senderLabel} in chat ${chatId}: "${text}"`);
 
-  // Validate we have an identity to check
   if (!userIdToCheck) {
-    console.warn(`[AUTH] Cannot determine sender identity for permission check`, { 
-      from: msg.from, 
-      sender_chat: msg.sender_chat 
-    });
+    console.warn(`[AUTH] Cannot determine sender identity`, { from: msg.from, sender_chat: msg.sender_chat });
     return;
   }
 
   try {
-    // Security Check: Admin only
     console.log(`[AUTH] Checking admin permissions for ${senderLabel} in chat ${chatId}`);
     const isAdmin = await checkAdminPermissions(token, chatId, userIdToCheck, isAnonymous);
     
@@ -179,19 +153,16 @@ async function handleCommand(msg, env) {
     }
     console.log(`[AUTH] Granted: ${senderLabel} has admin permissions`);
 
-    // Parse command
     const parts = text.split(/\s+/);
     const action = parts[1]?.toLowerCase();
     const targetBot = parts[2]?.replace(/^@/, "").toLowerCase();
     
     console.log(`[CMD] Action: "${action}", Target: "${targetBot || 'N/A'}"`);
 
-    // Fetch current whitelist from KV
     let whitelistStr = await env.WHITELIST_KV.get("whitelist");
     let list = whitelistStr ? whitelistStr.split(",").map(s => s.trim()) : [];
     console.log(`[KV] Current whitelist: [${list.join(', ')}]`);
 
-    // Execute command logic
     let responseText = "";
     
     if (action === "add" && targetBot) {
@@ -202,7 +173,6 @@ async function handleCommand(msg, env) {
         console.log(`[CMD] Added @${targetBot} to whitelist`);
       } else {
         responseText = `@${targetBot} уже в белом списке`;
-        console.log(`[CMD] @${targetBot} already in whitelist`);
       }
     } 
     else if (action === "remove" && targetBot) {
@@ -215,15 +185,10 @@ async function handleCommand(msg, env) {
         console.log(`[CMD] Removed @${targetBot} from whitelist`);
       } else {
         responseText = `@${targetBot} не в белом списке`;
-        console.log(`[CMD] @${targetBot} not found in whitelist`);
       }
     } 
     else if (action === "list") {
-      if (list.length === 0) {
-        responseText = "Empty";
-      } else {
-        responseText = list.map(b => `@${b}`).join(", ");
-      }
+      responseText = list.length === 0 ? "Empty" : list.map(b => `@${b}`).join(", ");
       console.log(`[CMD] Returning whitelist: ${responseText}`);
     } 
     else {
@@ -231,19 +196,13 @@ async function handleCommand(msg, env) {
       console.log(`[CMD] Invalid usage, sending help`);
     }
 
-    // Send reply
-    // For anonymous admins, reply to the chat (not the pseudo-user)
     const replyChatId = isAnonymous && msg.sender_chat?.id ? msg.sender_chat.id : chatId;
     const replyParams = {
       chat_id: replyChatId,
       text: responseText,
       reply_to_message_id: msg.message_id,
+      disable_notification: isAnonymous,
     };
-    
-    // Optional: reduce notification noise for anonymous admin replies
-    if (isAnonymous) {
-      replyParams.disable_notification = true;
-    }
 
     console.log(`[REPLY] Sending to chat ${replyChatId}: "${responseText}"`);
     const replyResult = await apiRequest(token, "sendMessage", replyParams);
@@ -252,18 +211,13 @@ async function handleCommand(msg, env) {
       console.log(`[REPLY] Message sent successfully`);
     } else {
       console.warn(`[WARN] Telegram API sendMessage failed:`, { 
-        status: replyResult.error_code, 
-        description: replyResult.description 
+        status: replyResult.error_code, description: replyResult.description 
       });
     }
     
   } catch (error) {
     console.error(`[ERROR] handleCommand failed:`, {
-      message: error.message,
-      stack: error.stack,
-      chatId,
-      sender: senderLabel,
-      command: text
+      message: error.message, stack: error.stack, chatId, sender: senderLabel, command: text
     });
     throw error;
   }
@@ -273,13 +227,9 @@ async function handleCommand(msg, env) {
 // HELPERS
 // ============================================================================
 
-/**
- * Save whitelist array to KV storage
- */
 async function saveWhitelist(env, list) {
   const cleanList = list.filter(Boolean);
   const listStr = cleanList.join(",");
-  
   console.log(`[KV] Writing whitelist: [${listStr || 'empty'}]`);
   
   try {
@@ -292,12 +242,18 @@ async function saveWhitelist(env, list) {
 }
 
 /**
- * Check if a user/chat has admin permissions with delete rights
- * Handles both regular users and anonymous admin sender_chats
+ * Check admin permissions.
+ * NOTE: Telegram's API does not support verifying anonymous admins via getChatMember.
+ * We trust them because Telegram only allows group admins to post anonymously.
  */
 async function checkAdminPermissions(token, chatId, userId, isAnonymous = false) {
+  if (isAnonymous) {
+    console.log(`[AUTH] Anonymous admin detected. Trusting as admin (Telegram restricts anonymous posting to admins only).`);
+    return true;
+  }
+
   try {
-    console.log(`[API] Calling getChatMember for ${isAnonymous ? 'sender_chat' : 'user'} ID ${userId} in chat ${chatId}`);
+    console.log(`[API] Calling getChatMember for user ID ${userId} in chat ${chatId}`);
     
     const res = await apiRequest(token, "getChatMember", {
       chat_id: chatId,
@@ -306,28 +262,16 @@ async function checkAdminPermissions(token, chatId, userId, isAnonymous = false)
     
     if (!res.ok) {
       console.warn(`[API] getChatMember returned error:`, { 
-        error_code: res.error_code, 
-        description: res.description,
-        chatId, 
-        userId 
+        error_code: res.error_code, description: res.description, chatId, userId 
       });
       return false;
     }
     
     const member = res.result;
-    
-    // For anonymous admins (sender_chat), check administrator status
-    if (isAnonymous) {
-      const isAdmin = member.status === "administrator" && member.can_delete_messages;
-      console.log(`[API] Anonymous sender - status: ${member.status}, can_delete: ${member.can_delete_messages}, isAdmin: ${isAdmin}`);
-      return isAdmin;
-    }
-    
-    // For regular users: creator OR admin with delete permission
     const isAdmin = member.status === "creator" || 
                    (member.status === "administrator" && member.can_delete_messages);
     
-    console.log(`[API] User ${userId} - status: ${member.status}, isAdmin: ${isAdmin}`);
+    console.log(`[API] User ${userId} - status: ${member.status}, can_delete: ${member.can_delete_messages}, isAdmin: ${isAdmin}`);
     return isAdmin;
     
   } catch (e) {
@@ -336,10 +280,6 @@ async function checkAdminPermissions(token, chatId, userId, isAnonymous = false)
   }
 }
 
-/**
- * Make authenticated request to Telegram Bot API
- * Includes error handling, logging, and response parsing
- */
 async function apiRequest(token, method, params) {
   const url = `https://api.telegram.org/bot${token}/${method}`;
   const startTime = Date.now();
@@ -355,40 +295,22 @@ async function apiRequest(token, method, params) {
     
     const duration = Date.now() - startTime;
     
-    // Handle HTTP errors
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'N/A');
       console.error(`[API-ERR] ${method} failed: HTTP ${response.status}`, {
-        duration: `${duration}ms`,
-        error: errorText.substring(0, 300),
-        method,
-        params
+        duration: `${duration}ms`, error: errorText.substring(0, 300), method, params
       });
-      
-      // Try to return structured error
-      try {
-        return JSON.parse(errorText);
-      } catch {
-        return { ok: false, error_code: response.status, description: errorText };
-      }
+      try { return JSON.parse(errorText); } 
+      catch { return { ok: false, error_code: response.status, description: errorText }; }
     }
     
-    // Parse successful response
     const result = await response.json();
-    console.log(`[API-OK] ${method} completed in ${duration}ms`, { 
-      ok: result.ok,
-      hasResult: !!result.result 
-    });
+    console.log(`[API-OK] ${method} completed in ${duration}ms`, { ok: result.ok, hasResult: !!result.result });
     return result;
     
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[API-NET] ${method} network error:`, {
-      message: error.message,
-      duration: `${duration}ms`,
-      method,
-      params
-    });
+    console.error(`[API-NET] ${method} network error:`, { message: error.message, duration: `${duration}ms`, method, params });
     throw error;
   }
 }
