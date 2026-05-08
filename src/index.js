@@ -85,8 +85,9 @@ async function processInlineMessage(msg, env) {
   console.log(`[WHITELIST] Checking @${viaBotUsername} for chat ${chatId}`);
 
   try {
-    const whitelistStr = await env.WHITELIST_KV.get("whitelist");
-    console.log(`[KV] Read whitelist: ${whitelistStr ? 'found' : 'empty/not found'}`);
+    const whitelistKey = "whitelist:" + chatId;
+    const whitelistStr = await env.WHITELIST_KV.get(whitelistKey);
+    console.log(`[KV] Read whitelist for chat ${chatId}: ${whitelistStr ? 'found' : 'empty/not found'}`);
     
     const allowedBots = new Set(
       (whitelistStr || "").split(",").map(b => b.trim().toLowerCase()).filter(Boolean)
@@ -159,16 +160,17 @@ async function handleCommand(msg, env) {
     
     console.log(`[CMD] Action: "${action}", Target: "${targetBot || 'N/A'}"`);
 
-    let whitelistStr = await env.WHITELIST_KV.get("whitelist");
+    const whitelistKey = "whitelist:" + chatId;
+    let whitelistStr = await env.WHITELIST_KV.get(whitelistKey);
     let list = whitelistStr ? whitelistStr.split(",").map(s => s.trim()) : [];
-    console.log(`[KV] Current whitelist: [${list.join(', ')}]`);
+    console.log(`[KV] Current whitelist for chat ${chatId}: [${list.join(', ')}]`);
 
     let responseText = "";
     
     if (action === "add" && targetBot) {
       if (!list.includes(targetBot)) {
         list.push(targetBot);
-        await saveWhitelist(env, list);
+        await saveWhitelist(env, list, chatId);
         responseText = `@${targetBot} добавлен в белый список`;
         console.log(`[CMD] Added @${targetBot} to whitelist`);
       } else {
@@ -180,7 +182,7 @@ async function handleCommand(msg, env) {
       list = list.filter(b => b !== targetBot);
       
       if (list.length < initialLen) {
-        await saveWhitelist(env, list);
+        await saveWhitelist(env, list, chatId);
         responseText = `@${targetBot} удалён из белого списка`;
         console.log(`[CMD] Removed @${targetBot} from whitelist`);
       } else {
@@ -227,16 +229,17 @@ async function handleCommand(msg, env) {
 // HELPERS
 // ============================================================================
 
-async function saveWhitelist(env, list) {
+async function saveWhitelist(env, list, chatId) {
   const cleanList = list.filter(Boolean);
   const listStr = cleanList.join(",");
-  console.log(`[KV] Writing whitelist: [${listStr || 'empty'}]`);
+  const whitelistKey = "whitelist:" + chatId;
+  console.log(`[KV] Writing whitelist for chat ${chatId}: [${listStr || 'empty'}]`);
   
   try {
-    await env.WHITELIST_KV.put("whitelist", listStr);
+    await env.WHITELIST_KV.put(whitelistKey, listStr);
     console.log(`[KV] Write successful`);
   } catch (error) {
-    console.error(`[KV] Write failed:`, error.message, { attemptedList: listStr });
+    console.error(`[KV] Write failed:`, error.message, { attemptedList: listStr, chatId });
     throw error;
   }
 }
