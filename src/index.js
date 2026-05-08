@@ -156,9 +156,9 @@ async function handleCommand(msg, env) {
 
     const parts = text.split(/\s+/);
     const action = parts[1]?.toLowerCase();
-    const targetBot = parts[2]?.replace(/^@/, "").toLowerCase();
+    const botNames = parts.slice(2).map(b => b.replace(/^@/, "").toLowerCase()).filter(Boolean);
     
-    console.log(`[CMD] Action: "${action}", Target: "${targetBot || 'N/A'}"`);
+    console.log(`[CMD] Action: "${action}", Targets: [${botNames.join(', ') || 'N/A'}]`);
 
     const whitelistKey = String(chatId);
     let whitelistStr = await env.WHITELIST_KV.get(whitelistKey);
@@ -167,26 +167,37 @@ async function handleCommand(msg, env) {
 
     let responseText = "";
     
-    if (action === "add" && targetBot) {
-      if (!list.includes(targetBot)) {
-        list.push(targetBot);
+    if (action === "add" && botNames.length > 0) {
+      const added = [];
+      for (const bot of botNames) {
+        if (!list.includes(bot)) {
+          list.push(bot);
+          added.push(bot);
+        }
+      }
+      if (added.length > 0) {
         await saveWhitelist(env, list, chatId);
-        responseText = `@${targetBot} добавлен в белый список`;
-        console.log(`[CMD] Added @${targetBot} to whitelist`);
+        responseText = added.map(b => `@${b}`).join(", ") + " добавлен(ы) в белый список";
+        console.log(`[CMD] Added [${added.join(', ')}] to whitelist`);
       } else {
-        responseText = `@${targetBot} уже в белом списке`;
+        responseText = "Все указанные боты уже в белом списке";
       }
     } 
-    else if (action === "remove" && targetBot) {
-      const initialLen = list.length;
-      list = list.filter(b => b !== targetBot);
-      
-      if (list.length < initialLen) {
+    else if (action === "remove" && botNames.length > 0) {
+      const removed = [];
+      for (const bot of botNames) {
+        const idx = list.indexOf(bot);
+        if (idx !== -1) {
+          list.splice(idx, 1);
+          removed.push(bot);
+        }
+      }
+      if (removed.length > 0) {
         await saveWhitelist(env, list, chatId);
-        responseText = `@${targetBot} удалён из белого списка`;
-        console.log(`[CMD] Removed @${targetBot} from whitelist`);
+        responseText = removed.map(b => `@${b}`).join(", ") + " удалён(ы) из белого списка";
+        console.log(`[CMD] Removed [${removed.join(', ')}] from whitelist`);
       } else {
-        responseText = `@${targetBot} не в белом списке`;
+        responseText = "Ни один из указанных ботов не был в белом списке";
       }
     } 
     else if (action === "list") {
@@ -194,7 +205,7 @@ async function handleCommand(msg, env) {
       console.log(`[CMD] Returning whitelist: ${responseText}`);
     } 
     else {
-      responseText = "Use: /whitelist add/remove/list @bot";
+      responseText = "Use: /whitelist add/remove/list @bot1 @bot2 ...";
       console.log(`[CMD] Invalid usage, sending help`);
     }
 
