@@ -7,7 +7,7 @@
  * - WHITELIST_KV: KV namespace binding for storing allowed bots
  */
 
-import { saveWhitelist, checkAdminPermissions, apiRequest } from '../helpers.js';
+import { saveWhitelist, checkAdminPermissions, apiRequest } from './helpers.js';
 
 export default {
   async fetch(request, env, ctx) {
