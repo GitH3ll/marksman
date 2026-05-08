@@ -7,7 +7,7 @@
  * - WHITELIST_KV: KV namespace binding for storing allowed bots
  */
 
-import { saveWhitelist, checkAdminPermissions, apiRequest } from './helpers.js';
+import { saveWhitelist, checkAdminPermissions, apiRequest, parseDuration } from './helpers.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -148,8 +148,15 @@ async function handleCommand(msg, env) {
 
   try {
     console.log(`[AUTH] Checking admin permissions for ${senderLabel} in chat ${chatId}`);
-    // For /whitelist command, we need can_delete_messages permission
-    const isAdmin = await checkAdminPermissions(token, chatId, userIdToCheck, isAnonymous, ['can_delete_messages']);
+    const commandName = text.split(/\s+/)[0]?.toLowerCase();
+    let requiredPerms;
+    if (commandName === "/mute") {
+      requiredPerms = ['can_restrict_members'];
+    } else {
+      // For /whitelist command, we need can_delete_messages permission
+      requiredPerms = ['can_delete_messages'];
+    }
+    const isAdmin = await checkAdminPermissions(token, chatId, userIdToCheck, isAnonymous, requiredPerms);
     
     if (!isAdmin) {
       console.warn(`[AUTH] Denied: ${senderLabel} lacks admin permissions in chat ${chatId}`);
@@ -158,58 +165,105 @@ async function handleCommand(msg, env) {
     console.log(`[AUTH] Granted: ${senderLabel} has admin permissions`);
 
     const parts = text.split(/\s+/);
+    const commandName = parts[0]?.toLowerCase();
     const action = parts[1]?.toLowerCase();
     const botNames = parts.slice(2).map(b => b.replace(/^@/, "").toLowerCase()).filter(Boolean);
     
-    console.log(`[CMD] Action: "${action}", Targets: [${botNames.join(', ') || 'N/A'}]`);
-
-    const whitelistKey = String(chatId);
-    let whitelistStr = await env.WHITELIST_KV.get(whitelistKey);
-    let list = whitelistStr ? whitelistStr.split(",").map(s => s.trim()) : [];
-    console.log(`[KV] Current whitelist for chat ${chatId}: [${list.join(', ')}]`);
+    console.log(`[CMD] Command: "${commandName}", Action: "${action}", Targets: [${botNames.join(', ') || 'N/A'}]`);
 
     let responseText = "";
-    
-    if (action === "add" && botNames.length > 0) {
-      const added = [];
-      for (const bot of botNames) {
-        if (!list.includes(bot)) {
-          list.push(bot);
-          added.push(bot);
+
+    if (commandName === "/whitelist") {
+      const whitelistKey = String(chatId);
+      let whitelistStr = await env.WHITELIST_KV.get(whitelistKey);
+      let list = whitelistStr ? whitelistStr.split(",").map(s => s.trim()) : [];
+      console.log(`[KV] Current whitelist for chat ${chatId}: [${list.join(', ')}]`);
+
+      if (action === "add" && botNames.length > 0) {
+        const added = [];
+        for (const bot of botNames) {
+          if (!list.includes(bot)) {
+            list.push(bot);
+            added.push(bot);
+          }
+        }
+        if (added.length > 0) {
+          await saveWhitelist(env, list, chatId);
+          responseText = added.map(b => `@${b}`).join(", ") + " добавлен(ы) в белый список";
+          console.log(`[CMD] Added [${added.join(', ')}] to whitelist`);
+        } else {
+          responseText = "Все указанные боты уже в белом списке";
+        }
+      } 
+      else if (action === "remove" && botNames.length > 0) {
+        const removed = [];
+        for (const bot of botNames) {
+          const idx = list.indexOf(bot);
+          if (idx !== -1) {
+            list.splice(idx, 1);
+            removed.push(bot);
+          }
+        }
+        if (removed.length > 0) {
+          await saveWhitelist(env, list, chatId);
+          responseText = removed.map(b => `@${b}`).join(", ") + " удалён(ы) из белого списка";
+          console.log(`[CMD] Removed [${removed.join(', ')}] from whitelist`);
+        } else {
+          responseText = "Ни один из указанных ботов не был в белом списке";
+        }
+      } 
+      else if (action === "list") {
+        responseText = list.length === 0 ? "Empty" : list.map(b => `@${b}`).join(", ");
+        console.log(`[CMD] Returning whitelist: ${responseText}`);
+      } 
+      else {
+        responseText = "Use: /whitelist add/remove/list @bot1 @bot2 ...";
+        console.log(`[CMD] Invalid usage, sending help`);
+      }
+    } else if (commandName === "/mute") {
+      // /mute <duration> - must be a reply to a user message
+      if (!msg.reply_to_message || !msg.reply_to_message.from) {
+        responseText = "Use: /mute <duration> as a reply to a user message";
+        console.log(`[CMD] /mute: no reply message`);
+      } else {
+        const durationStr = action; // parts[1] is the duration
+        const seconds = parseDuration(durationStr);
+        if (seconds === null) {
+          responseText = "Invalid duration format. Use e.g. 1d2h30m (d=days, h=hours, m=minutes)";
+          console.log(`[CMD] /mute: invalid duration "${durationStr}"`);
+        } else {
+          const targetUserId = msg.reply_to_message.from.id;
+          const untilDate = Math.floor(Date.now() / 1000) + seconds;
+          console.log(`[CMD] /mute: user ${targetUserId} for ${seconds}s until ${untilDate}`);
+
+          const muteResult = await apiRequest(token, "restrictChatMember", {
+            chat_id: chatId,
+            user_id: targetUserId,
+            permissions: {
+              can_send_messages: false,
+              can_send_media_messages: false,
+              can_send_polls: false,
+              can_send_other_messages: false,
+              can_add_web_page_previews: false,
+              can_change_info: false,
+              can_invite_users: false,
+              can_pin_messages: false,
+            },
+            until_date: untilDate,
+          });
+
+          if (muteResult.ok) {
+            responseText = `Пользователь замучен на ${durationStr}`;
+            console.log(`[CMD] /mute: success`);
+          } else {
+            responseText = `Ошибка: ${muteResult.description || 'unknown'}`;
+            console.warn(`[CMD] /mute: API error`, muteResult);
+          }
         }
       }
-      if (added.length > 0) {
-        await saveWhitelist(env, list, chatId);
-        responseText = added.map(b => `@${b}`).join(", ") + " добавлен(ы) в белый список";
-        console.log(`[CMD] Added [${added.join(', ')}] to whitelist`);
-      } else {
-        responseText = "Все указанные боты уже в белом списке";
-      }
-    } 
-    else if (action === "remove" && botNames.length > 0) {
-      const removed = [];
-      for (const bot of botNames) {
-        const idx = list.indexOf(bot);
-        if (idx !== -1) {
-          list.splice(idx, 1);
-          removed.push(bot);
-        }
-      }
-      if (removed.length > 0) {
-        await saveWhitelist(env, list, chatId);
-        responseText = removed.map(b => `@${b}`).join(", ") + " удалён(ы) из белого списка";
-        console.log(`[CMD] Removed [${removed.join(', ')}] from whitelist`);
-      } else {
-        responseText = "Ни один из указанных ботов не был в белом списке";
-      }
-    } 
-    else if (action === "list") {
-      responseText = list.length === 0 ? "Empty" : list.map(b => `@${b}`).join(", ");
-      console.log(`[CMD] Returning whitelist: ${responseText}`);
-    } 
-    else {
-      responseText = "Use: /whitelist add/remove/list @bot1 @bot2 ...";
-      console.log(`[CMD] Invalid usage, sending help`);
+    } else {
+      responseText = "Unknown command";
+      console.log(`[CMD] Unknown command: ${commandName}`);
     }
 
     const replyChatId = isAnonymous && msg.sender_chat?.id ? msg.sender_chat.id : chatId;

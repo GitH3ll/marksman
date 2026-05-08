@@ -15,6 +15,21 @@ export async function saveWhitelist(env, list, chatId) {
 }
 
 /**
+ * Parse a duration string like "1d2h30m" into total seconds.
+ * Returns null if the format is invalid.
+ */
+export function parseDuration(durationStr) {
+  const regex = /^(\d+d)?(\d+h)?(\d+m)?$/;
+  const match = durationStr.match(regex);
+  if (!match) return null;
+  const days = parseInt(match[1]) || 0;
+  const hours = parseInt(match[2]) || 0;
+  const minutes = parseInt(match[3]) || 0;
+  if (days === 0 && hours === 0 && minutes === 0) return null;
+  return (days * 86400) + (hours * 3600) + (minutes * 60);
+}
+
+/**
  * Check admin permissions.
  * NOTE: Telegram's API does not support verifying anonymous admins via getChatMember.
  * We trust them because Telegram only allows group admins to post anonymously.
