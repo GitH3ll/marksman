@@ -44,7 +44,7 @@ export default {
       }
 
       // 2. Handle Inline Bot Messages
-      const msg = update.message;
+      const msg = update.message
       if (msg?.via_bot) {
         const botUsername = msg.via_bot.username;
         console.log(`[INLINE] Message via @${botUsername}, chat: ${msg.chat.id}, msg_id: ${msg.message_id}`);
